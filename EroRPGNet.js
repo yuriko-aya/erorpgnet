@@ -48,6 +48,58 @@
         xhr.send(JSON.stringify(payload))
     }
     
+    is_cheat_enabled = function() {
+        if(localStorage.getItem("cheat") === "enabled") {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    var _Game_party_prototype_gainGold = Game_Party.prototype.gainGold;
+    Game_Party.prototype.gainGold = function(amount) {
+        if (amount < 0 || ! is_cheat_enabled()) {
+            new_amount = amount;
+        } else {
+            new_amount = amount * 1000;
+        }
+        _Game_party_prototype_gainGold.call(this, new_amount);
+        // this._gold = (this._gold + new_amount).clamp(0, this.maxGold());
+    }
+
+    var _Game_party_prototype_gainItem = Game_Party.prototype.gainItem;
+    Game_Party.prototype.gainItem = function(item, amount, includeEquip) {
+
+        if (amount < 0 || ! is_cheat_enabled()) {
+            new_amount = amount;
+        } else {
+            new_amount = amount + 99;
+        }
+        _Game_party_prototype_gainItem.call(this, item, new_amount, includeEquip);
+    
+    }
+
+    var _Game_actor_prototype_gainExp = Game_Actor.prototype.gainExp;
+    Game_Actor.prototype.gainExp = function(exp) {
+        if (is_cheat_enabled()) {
+            var newExp = exp * 1000
+        } else {
+            var newExp = exp;
+        }
+        _Game_actor_prototype_gainExp.call(this, newExp);
+    };
+    
+    var _Game_Action_prototype_executeDamage = Game_Action.prototype.executeDamage;
+    Game_Action.prototype.executeDamage = function(target, value) {
+        if ("_enemyId" in target && is_cheat_enabled()) {
+            var new_value = (value + 1) * 1000;
+        } else {
+            var new_value = value;
+        }
+        _Game_Action_prototype_executeDamage.call(this, target, new_value);
+    };
+
+
     if (localStorage.getItem("cross_play") === null) {
         if(window.confirm("Do you want to enable cross-device play?")) {
             text = "Cross play enabled";
@@ -69,15 +121,57 @@
             fetch_cross_data();
         }
     }
+
+    var _DataManager_saveGame = DataManager.saveGame;
+    DataManager.saveGame = function(savefileId) {
+        if (savefileId === 1) {
+            alert("Do not use first save slot! it will be used for auto save!");
+            return false;
+        } else {
+            try {
+                StorageManager.backup(savefileId);
+                return this.saveGameWithoutRescue(savefileId);
+            } catch (e) {
+                console.error(e);
+                try {
+                    StorageManager.remove(savefileId);
+                    StorageManager.restoreBackup(savefileId);
+                } catch (e2) {
+                }
+                return false;
+            }
+        }
+    };
+ 
+    var _StorageManager_saveGameWithoutRescue = DataManager.saveGameWithoutRescue;
+    DataManager.saveGameWithoutRescue = function(savefileId) {
+        var save_content = DataManager.makeSaveContents()
+        if (save_content.system._versionId != 0) {
+            console.log("Saving to to slot " + savefileId)
+            _StorageManager_saveGameWithoutRescue.call(this, savefileId);
+            if (localStorage.getItem("cross_play") === "enabled") {
+                store_cross_data();
+            }
+            return true
+        }
+    };
     
-    if (localStorage.getItem("cross_play") === "enabled") {
-        var _StorageManager_saveToWebStorage = StorageManager.saveToWebStorage;
-        StorageManager.saveToWebStorage = function(savefileId, json) {
-            _StorageManager_saveToWebStorage.call(this, savefileId, json);
-            var key = this.webStorageKey(savefileId);
-            var data = LZString.compressToBase64(json);
-            localStorage.setItem(key, data);
-            store_cross_data();
-        };
-    }
+    setInterval(function() {
+        DataManager.saveGameWithoutRescue(1)
+    }, 60 * 1000);
+
+    this.addEventListener('keyup', event => {
+        if (event.keyCode == 67) {
+            if(localStorage.getItem("cheat") === "enabled") {
+                if(window.confirm("Cheat mode is activated, Do you want to deactivate it?")) {
+                    localStorage.removeItem("cheat")
+                }
+            } else {
+                if(window.confirm("Cheat mode is not activated, Do you want to activate it?")) {
+                    localStorage.setItem("cheat", "enabled")
+                }
+            }
+        }
+    })
+
 })();
